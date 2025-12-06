@@ -1,0 +1,58 @@
+/* TaskHub Custom Theme Styles */
+
+/* Brand Colors */
+:root {
+  --taskhub-primary: #0ea5e9;
+  --taskhub-primary-dark: #0284c7;
+  --taskhub-bg: #f9fafb;
+}
+
+/* Login Page Background */
+body.kcBodyClass {
+  background: linear-gradient(135deg, var(--taskhub-primary) 0%, var(--taskhub-primary-dark) 100%);
+  min-height: 100vh;
+}
+
+/* Card Styling */
+.card-pf {
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* Button Styling */
+.btn-primary {
+  background-color: var(--taskhub-primary);
+  border-color: var(--taskhub-primary);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--taskhub-primary-dark);
+  border-color: var(--taskhub-primary-dark);
+}
+
+/* Form Input Styling */
+.form-control {
+  border-radius: 8px;
+  border-color: #e5e7eb;
+}
+
+.form-control:focus {
+  border-color: var(--taskhub-primary);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
+}
+
+/* Logo Area */
+.kc-logo-text {
+  font-weight: bold;
+  color: var(--taskhub-primary);
+}
+
+/* Link Styling */
+a {
+  color: var(--taskhub-primary);
+}
+
+a:hover {
+  color: var(--taskhub-primary-dark);
+}

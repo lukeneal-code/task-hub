@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database - Shared instance with schema-per-tenant isolation
+  postgres:
+    image: postgres:15-alpine
+    container_name: taskhub-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-taskhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskhub_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-taskhub}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-taskhub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - taskhub-network
+
+  # Keycloak Identity Provider
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: taskhub-keycloak
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-taskhub}
+      KC_DB_USERNAME: ${POSTGRES_USER:-taskhub}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-taskhub_secret}
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_HEALTH_ENABLED: true
+    command: start-dev --import-realm
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-config:/opt/keycloak/data/import
+      - ./keycloak/themes:/opt/keycloak/themes
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e \"GET /health/ready HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n\" >&3;grep -q '200 OK' <&3"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - taskhub-network
+
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: taskhub-backend
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-taskhub}:${POSTGRES_PASSWORD:-taskhub_secret}@postgres:5432/${POSTGRES_DB:-taskhub}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
+      JWT_ISSUER: http://localhost:8080/realms
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - taskhub-network
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: taskhub-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8080
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - taskhub-network
+
+volumes:
+  postgres_data:
+
+networks:
+  taskhub-network:
+    driver: bridge
