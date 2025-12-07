@@ -106,6 +106,43 @@ services:
     networks:
       - taskhub-network
 
+  # Admin API Service (Python/FastAPI)
+  admin-api:
+    build:
+      context: ./admin-service
+      dockerfile: Dockerfile
+    container_name: taskhub-admin-api
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-taskhub}:${POSTGRES_PASSWORD:-taskhub_secret}@postgres:5432/${POSTGRES_DB:-taskhub}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      LOG_LEVEL: info
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./admin-service/app:/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - taskhub-network
+
+  # Admin UI (React/Vite)
+  admin-ui:
+    build:
+      context: ./admin-service/admin-ui
+      dockerfile: Dockerfile
+    container_name: taskhub-admin-ui
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./admin-service/admin-ui/src:/app/src
+    depends_on:
+      - admin-api
+    networks:
+      - taskhub-network
+
 volumes:
   postgres_data:
 
