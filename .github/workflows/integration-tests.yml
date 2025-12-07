@@ -33,7 +33,7 @@ jobs:
 
       - name: Build test images
         run: |
-          docker-compose -f docker-compose.test.yml build
+          docker compose -f docker-compose.test.yml build
 
   # Backend Integration Tests
   backend-integration:
@@ -288,14 +288,14 @@ jobs:
 
       - name: Start test infrastructure
         run: |
-          docker-compose -f docker-compose.test.yml up -d
+          docker compose -f docker-compose.test.yml up -d
 
       - name: Wait for services
         run: |
           echo "Waiting for all services to be healthy..."
           for i in {1..90}; do
-            POSTGRES_OK=$(docker-compose -f docker-compose.test.yml ps postgres-test | grep -c "healthy" || echo "0")
-            KEYCLOAK_OK=$(docker-compose -f docker-compose.test.yml ps keycloak-test | grep -c "healthy" || echo "0")
+            POSTGRES_OK=$(docker compose -f docker-compose.test.yml ps postgres-test | grep -c "healthy" || echo "0")
+            KEYCLOAK_OK=$(docker compose -f docker-compose.test.yml ps keycloak-test | grep -c "healthy" || echo "0")
             BACKEND_OK=$(curl -s http://localhost:3002/health | grep -c "ok" || echo "0")
             ADMIN_OK=$(curl -s http://localhost:8001/health | grep -c "ok" || echo "0")
 
@@ -309,7 +309,7 @@ jobs:
 
       - name: Seed test data
         run: |
-          docker-compose -f docker-compose.test.yml exec -T postgres-test psql -U taskhub_test -d taskhub_test -f /docker-entrypoint-initdb.d/test-seed.sql || true
+          docker compose -f docker-compose.test.yml exec -T postgres-test psql -U taskhub_test -d taskhub_test -f /docker-entrypoint-initdb.d/test-seed.sql || true
 
       - name: Install E2E dependencies
         working-directory: e2e
@@ -343,7 +343,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker-compose -f docker-compose.test.yml down -v
+        run: docker compose -f docker-compose.test.yml down -v
 
   # Multi-Tenant Isolation Tests (Critical Security Tests)
   multi-tenant-isolation:
@@ -367,7 +367,7 @@ jobs:
 
       - name: Start test infrastructure
         run: |
-          docker-compose -f docker-compose.test.yml up -d postgres-test keycloak-test backend-test
+          docker compose -f docker-compose.test.yml up -d postgres-test keycloak-test backend-test
 
       - name: Wait for services
         run: |
@@ -441,7 +441,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker-compose -f docker-compose.test.yml down -v
+        run: docker compose -f docker-compose.test.yml down -v
 
   # Summary job
   test-summary:
