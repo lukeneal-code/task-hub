@@ -1,0 +1,250 @@
+/**
+ * Multi-Tenant Isolation Integration Tests
+ *
+ * CRITICAL: These tests verify that tenant data isolation is working correctly.
+ * Failure of these tests indicates a serious security vulnerability.
+ */
+
+import { createClientForRole, apiClient } from '../helpers/api.helper';
+import { TEST_CONFIG } from '../setup';
+
+describe('Multi-Tenant Isolation', () => {
+  describe('Cross-Tenant Data Access', () => {
+    it('CRITICAL: Alpha tenant cannot access Beta projects', async () => {
+      const alphaClient = await createClientForRole('alpha', 'admin');
+      const betaProjectId = TEST_CONFIG.projects.beta.one.id;
+
+      const response = await alphaClient.get(`/api/projects/${betaProjectId}`);
+
+      // Must be 404 - project should not be visible
+      expect(response.status).toBe(404);
+    });
+
+    it('CRITICAL: Beta tenant cannot access Alpha projects', async () => {
+      const betaClient = await createClientForRole('beta', 'admin');
+      const alphaProjectId = TEST_CONFIG.projects.alpha.one.id;
+
+      const response = await betaClient.get(`/api/projects/${alphaProjectId}`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('CRITICAL: Alpha tenant cannot access Beta tasks', async () => {
+      const alphaClient = await createClientForRole('alpha', 'admin');
+      const betaTaskId = TEST_CONFIG.tasks.beta.task1.id;
+
+      const response = await alphaClient.get(`/api/tasks/${betaTaskId}`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('CRITICAL: Beta tenant cannot access Alpha tasks', async () => {
+      const betaClient = await createClientForRole('beta', 'admin');
+      const alphaTaskId = TEST_CONFIG.tasks.alpha.task1.id;
+
+      const response = await betaClient.get(`/api/tasks/${alphaTaskId}`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('CRITICAL: Cannot create tasks in another tenant project', async () => {
+      const alphaClient = await createClientForRole('alpha', 'admin');
+      const betaProjectId = TEST_CONFIG.projects.beta.one.id;
+
+      const response = await alphaClient.post(
+        `/api/projects/${betaProjectId}/tasks`,
+        {
+          title: 'Cross-tenant task injection attempt',
+        }
+      );
+
+      // Must be 404 (project not found) - NOT 201
+      expect(response.status).toBe(404);
+    });
+
+    it('CRITICAL: Cannot update tasks in another tenant', async () => {
+      const alphaClient = await createClientForRole('alpha', 'admin');
+      const betaTaskId = TEST_CONFIG.tasks.beta.task1.id;
+
+      const response = await alphaClient.put(`/api/tasks/${betaTaskId}`, {
+        title: 'Cross-tenant update attempt',
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('CRITICAL: Cannot delete tasks in another tenant', async () => {
+      const alphaClient = await createClientForRole('alpha', 'admin');
+      const betaTaskId = TEST_CONFIG.tasks.beta.task1.id;
+
+      const response = await alphaClient.delete(`/api/tasks/${betaTaskId}`);
+
+      expect(response.status).toBe(404);
+    });
+
+    it('CRITICAL: Cannot delete projects in another tenant', async () => {
+      const alphaClient = await createClientForRole('alpha', 'admin');
+      const betaProjectId = TEST_CONFIG.projects.beta.one.id;
+
+      const response = await alphaClient.delete(
+        `/api/projects/${betaProjectId}`
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('Project List Isolation', () => {
+    it('Alpha project list contains only Alpha projects', async () => {
+      const alphaClient = await createClientForRole('alpha', 'admin');
+      const response = await alphaClient.get('/api/projects');
+
+      expect(response.status).toBe(200);
+
+      const projects = response.data.data || response.data;
+      const projectIds = projects.map((p: any) => p.id);
+
+      // Should contain Alpha projects
+      expect(projectIds).toContain(TEST_CONFIG.projects.alpha.one.id);
+
+      // Should NOT contain Beta projects
+      expect(projectIds).not.toContain(TEST_CONFIG.projects.beta.one.id);
+      expect(projectIds).not.toContain(TEST_CONFIG.projects.beta.two.id);
+    });
+
+    it('Beta project list contains only Beta projects', async () => {
+      const betaClient = await createClientForRole('beta', 'admin');
+      const response = await betaClient.get('/api/projects');
+
+      expect(response.status).toBe(200);
+
+      const projects = response.data.data || response.data;
+      const projectIds = projects.map((p: any) => p.id);
+
+      // Should contain Beta projects
+      expect(projectIds).toContain(TEST_CONFIG.projects.beta.one.id);
+
+      // Should NOT contain Alpha projects
+      expect(projectIds).not.toContain(TEST_CONFIG.projects.alpha.one.id);
+      expect(projectIds).not.toContain(TEST_CONFIG.projects.alpha.two.id);
+    });
+  });
+
+  describe('SQL Injection Prevention', () => {
+    it('should handle malicious project ID safely', async () => {
+      const client = await createClientForRole('alpha', 'admin');
+
+      // Attempt SQL injection via project ID
+      const maliciousId = "'; DROP TABLE projects; --";
+      const response = await client.get(
+        `/api/projects/${encodeURIComponent(maliciousId)}`
+      );
+
+      // Should be 400 (invalid UUID) or 404, not a server error
+      expect([400, 404]).toContain(response.status);
+    });
+
+    it('should handle malicious search parameters safely', async () => {
+      const client = await createClientForRole('alpha', 'admin');
+
+      // Attempt SQL injection via query parameter
+      const maliciousSearch = "'; SELECT * FROM tenant_beta.projects; --";
+      const response = await client.get('/api/projects', {
+        params: { search: maliciousSearch },
+      });
+
+      // Should complete without error
+      expect(response.status).not.toBe(500);
+
+      // Should not leak cross-tenant data
+      const projects = response.data.data || response.data;
+      if (Array.isArray(projects)) {
+        const projectIds = projects.map((p: any) => p.id);
+        expect(projectIds).not.toContain(TEST_CONFIG.projects.beta.one.id);
+      }
+    });
+
+    it('should handle UNION SELECT injection attempt', async () => {
+      const client = await createClientForRole('alpha', 'admin');
+
+      // Attempt UNION-based SQL injection
+      const maliciousSearch =
+        "' UNION SELECT * FROM tenant_beta.projects WHERE '1'='1";
+      const response = await client.get('/api/projects', {
+        params: { search: maliciousSearch },
+      });
+
+      expect(response.status).not.toBe(500);
+
+      // Must not return Beta data
+      const projects = response.data.data || response.data;
+      if (Array.isArray(projects)) {
+        projects.forEach((project: any) => {
+          expect(project.id).not.toBe(TEST_CONFIG.projects.beta.one.id);
+          expect(project.id).not.toBe(TEST_CONFIG.projects.beta.two.id);
+        });
+      }
+    });
+  });
+
+  describe('Schema Boundary Enforcement', () => {
+    it('Alpha tasks are in Alpha project only', async () => {
+      const client = await createClientForRole('alpha', 'admin');
+      const alphaProjectId = TEST_CONFIG.projects.alpha.one.id;
+
+      const response = await client.get(
+        `/api/projects/${alphaProjectId}/tasks`
+      );
+
+      expect(response.status).toBe(200);
+
+      const tasks = response.data.data || response.data;
+      tasks.forEach((task: any) => {
+        expect(task.project_id).toBe(alphaProjectId);
+      });
+    });
+
+    it('Beta tasks are in Beta project only', async () => {
+      const client = await createClientForRole('beta', 'admin');
+      const betaProjectId = TEST_CONFIG.projects.beta.one.id;
+
+      const response = await client.get(`/api/projects/${betaProjectId}/tasks`);
+
+      expect(response.status).toBe(200);
+
+      const tasks = response.data.data || response.data;
+      tasks.forEach((task: any) => {
+        expect(task.project_id).toBe(betaProjectId);
+      });
+    });
+  });
+
+  describe('Token Cross-Tenant Rejection', () => {
+    it('Alpha token cannot be used with Beta tenant slug', async () => {
+      // This tests that even if someone tries to use an Alpha token
+      // while specifying Beta tenant context, they should be rejected
+
+      // Get Alpha user token
+      const alphaClient = await createClientForRole('alpha', 'admin');
+
+      // Try to access with a potential tenant override header
+      // (if such a mechanism existed, it should be ignored)
+      const response = await alphaClient.get('/api/projects', {
+        headers: {
+          'X-Tenant-Slug': 'beta',
+          'X-Tenant-ID': TEST_CONFIG.tenants.beta.id,
+        },
+      });
+
+      // Should return Alpha data, not Beta data
+      const projects = response.data.data || response.data;
+      if (Array.isArray(projects) && projects.length > 0) {
+        // All returned projects should be Alpha projects
+        projects.forEach((project: any) => {
+          expect(project.id).not.toBe(TEST_CONFIG.projects.beta.one.id);
+          expect(project.id).not.toBe(TEST_CONFIG.projects.beta.two.id);
+        });
+      }
+    });
+  });
+});

@@ -1,0 +1,14 @@
+# Test dependencies for admin-service
+-r requirements.txt
+
+# Testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-timeout>=2.2.0
+
+# HTTP client for testing
+httpx>=0.25.0
+
+# Async support
+anyio>=4.0.0

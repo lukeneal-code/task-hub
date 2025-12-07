@@ -1,0 +1,149 @@
+# Docker Compose configuration for integration tests
+# Uses separate ports and ephemeral volumes to avoid conflicts with development
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database for testing
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: taskhub-postgres-test
+    environment:
+      POSTGRES_USER: taskhub_test
+      POSTGRES_PASSWORD: test_secret
+      POSTGRES_DB: taskhub_test
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./scripts/test-seed.sql:/docker-entrypoint-initdb.d/test-seed.sql
+    # No persistent volume - ephemeral for tests
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskhub_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - taskhub-test-network
+
+  # Keycloak for testing
+  keycloak-test:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: taskhub-keycloak-test
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-test:5432/taskhub_test
+      KC_DB_USERNAME: taskhub_test
+      KC_DB_PASSWORD: test_secret
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8081
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_HEALTH_ENABLED: true
+    command: start-dev
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e \"GET /health/ready HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n\" >&3;grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    networks:
+      - taskhub-test-network
+
+  # Backend API for testing
+  backend-test:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: taskhub-backend-test
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://taskhub_test:test_secret@postgres-test:5432/taskhub_test
+      KEYCLOAK_URL: http://keycloak-test:8080
+      KEYCLOAK_ADMIN_URL: http://keycloak-test:8080
+      KEYCLOAK_ADMIN_USER: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_PUBLIC_URL: http://localhost:8081
+      KEYCLOAK_CLIENT_ID: taskhub-app
+      JWT_ISSUER: http://localhost:8081/realms
+      PORT: 3001
+    ports:
+      - "3002:3001"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      keycloak-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - taskhub-test-network
+
+  # Admin API for testing
+  admin-api-test:
+    build:
+      context: ./admin-service
+      dockerfile: Dockerfile
+    container_name: taskhub-admin-api-test
+    environment:
+      DATABASE_URL: postgresql://taskhub_test:test_secret@postgres-test:5432/taskhub_test
+      KEYCLOAK_URL: http://keycloak-test:8080
+      KEYCLOAK_ADMIN_USER: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      CORS_ORIGINS: http://localhost:5174,http://localhost:3000
+      LOG_LEVEL: info
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      keycloak-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - taskhub-test-network
+
+  # Frontend for E2E testing
+  frontend-test:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: taskhub-frontend-test
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3002
+      NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8081
+    ports:
+      - "3003:3000"
+    depends_on:
+      backend-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - taskhub-test-network
+
+networks:
+  taskhub-test-network:
+    driver: bridge
