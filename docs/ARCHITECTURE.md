@@ -18,6 +18,15 @@ TaskHub is a multi-tenant SaaS application demonstrating enterprise-grade Identi
 │   │   │   - SSO       │ │   - List      │ │   - CRUD      │            │  │
 │   │   └───────────────┘ └───────────────┘ └───────────────┘            │  │
 │   └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐  │
+│   │                     React/Vite Admin UI                              │  │
+│   │   ┌───────────────┐ ┌───────────────┐ ┌───────────────┐            │  │
+│   │   │ Tenant List   │ │ Create Tenant │ │  User Mgmt    │            │  │
+│   │   │   - Status    │ │   - Form      │ │   - CRUD      │            │  │
+│   │   │   - Actions   │ │   - Provision │ │   - Roles     │            │  │
+│   │   └───────────────┘ └───────────────┘ └───────────────┘            │  │
+│   └─────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       │ HTTPS / JWT Bearer Tokens
@@ -26,7 +35,7 @@ TaskHub is a multi-tenant SaaS application demonstrating enterprise-grade Identi
 │                               API LAYER                                      │
 │                                                                             │
 │   ┌─────────────────────────────────────────────────────────────────────┐  │
-│   │                    Node.js/Express Backend                           │  │
+│   │                    Node.js/Express Backend (Port 3001)               │  │
 │   │                                                                      │  │
 │   │   ┌─────────────────────────────────────────────────────────────┐   │  │
 │   │   │                      MIDDLEWARE                              │   │  │
@@ -53,13 +62,28 @@ TaskHub is a multi-tenant SaaS application demonstrating enterprise-grade Identi
 │   │   │  │ Tenants  │ │ Projects │ │  Tasks   │ │  Audit   │       │   │  │
 │   │   │  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │   │  │
 │   │   └─────────────────────────────────────────────────────────────┘   │  │
+│   └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐  │
+│   │                Python/FastAPI Admin Service (Port 8000)              │  │
 │   │                                                                      │  │
 │   │   ┌─────────────────────────────────────────────────────────────┐   │  │
-│   │   │                    SERVICES                                  │   │  │
-│   │   │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │   │  │
-│   │   │  │ Tenant   │ │ Keycloak │ │ Project  │ │  Audit   │       │   │  │
-│   │   │  │ Service  │ │ Service  │ │ Service  │ │ Service  │       │   │  │
-│   │   │  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │   │  │
+│   │   │                      SERVICES                                │   │  │
+│   │   │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐        │   │  │
+│   │   │  │   Tenant     │ │    User      │ │   Keycloak   │        │   │  │
+│   │   │  │   Service    │ │   Service    │ │   Service    │        │   │  │
+│   │   │  │              │ │              │ │              │        │   │  │
+│   │   │  │ - Create     │ │ - Create     │ │ - Realms     │        │   │  │
+│   │   │  │ - Suspend    │ │ - Delete     │ │ - Users      │        │   │  │
+│   │   │  │ - Delete     │ │ - Roles      │ │ - Roles      │        │   │  │
+│   │   │  └──────────────┘ └──────────────┘ └──────────────┘        │   │  │
+│   │   └─────────────────────────────────────────────────────────────┘   │  │
+│   │                                                                      │  │
+│   │   ┌─────────────────────────────────────────────────────────────┐   │  │
+│   │   │                     API ROUTES                               │   │  │
+│   │   │  ┌──────────────────────┐ ┌──────────────────────┐         │   │  │
+│   │   │  │ /api/tenants/*       │ │ /api/tenants/*/users │         │   │  │
+│   │   │  └──────────────────────┘ └──────────────────────┘         │   │  │
 │   │   └─────────────────────────────────────────────────────────────┘   │  │
 │   └─────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -86,6 +110,52 @@ TaskHub is a multi-tenant SaaS application demonstrating enterprise-grade Identi
 └───────────────────────┘ │ └───────────────┘ │
                           └───────────────────┘
 ```
+
+## Admin Service Architecture
+
+The Admin Service is a Python/FastAPI microservice responsible for tenant lifecycle management:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         ADMIN SERVICE (FastAPI)                              │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐  │
+│   │                     Tenant Provisioning Flow                         │  │
+│   │                                                                      │  │
+│   │   1. Create tenant record (status: pending)                          │  │
+│   │                     │                                                │  │
+│   │                     ▼                                                │  │
+│   │   2. Create Keycloak realm ───────────────────────┐                 │  │
+│   │      - Create realm with display name              │                 │  │
+│   │      - Create roles (admin, manager, member)       │                 │  │
+│   │      - Create taskhub-app client                   │                 │  │
+│   │                     │                              │                 │  │
+│   │                     ▼                              │                 │  │
+│   │   3. Create database schema ──────────────────────┤                 │  │
+│   │      - Create tenant_{slug} schema                 │                 │  │
+│   │      - Create users, projects, tasks tables        │  Rollback on   │  │
+│   │                     │                              │  failure        │  │
+│   │                     ▼                              │                 │  │
+│   │   4. Create admin user ───────────────────────────┤                 │  │
+│   │      - Create user in Keycloak                     │                 │  │
+│   │      - Assign admin role                           │                 │  │
+│   │      - Create user record in tenant DB             │                 │  │
+│   │                     │                              │                 │  │
+│   │                     ▼                              │                 │  │
+│   │   5. Update tenant status to 'active'              │                 │  │
+│   │                                                    │                 │  │
+│   └────────────────────────────────────────────────────┘                 │  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| Tenant Service | `app/services/tenant_service.py` | Orchestrates tenant lifecycle |
+| User Service | `app/services/user_service.py` | User CRUD within tenants |
+| Keycloak Service | `app/services/keycloak_service.py` | Keycloak admin API integration |
+| Database | `app/database.py` | PostgreSQL connection + schema management |
 
 ## Multi-Tenant Data Isolation
 

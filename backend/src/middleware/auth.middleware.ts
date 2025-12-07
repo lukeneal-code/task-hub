@@ -103,10 +103,16 @@ export async function authenticate(
     const jwks = await getJwks(realm);
 
     // Verify token signature and claims
+    // Note: We don't strictly validate audience because Keycloak's default
+    // audience is 'account' for password grant. We validate azp (authorized party) instead.
     const { payload } = await jose.jwtVerify(token, jwks, {
       issuer: `${config.keycloak.publicUrl}/realms/${realm}`,
-      audience: config.jwt.audience,
     });
+
+    // Validate that the token was issued for our client
+    if (payload.azp !== config.keycloak.clientId) {
+      throw new Error(`Invalid authorized party: ${payload.azp}`);
+    }
 
     // Extract user information from token claims
     const user = {

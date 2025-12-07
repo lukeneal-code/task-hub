@@ -5,6 +5,7 @@ import hashlib
 
 from app import database as db
 from app.models.user import CreateUserRequest, UserResponse
+from app.services.keycloak_service import keycloak_service
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class UserService:
     async def create_user(
         self, tenant_id: UUID, request: CreateUserRequest
     ) -> UserResponse:
-        """Create a new user in a tenant."""
+        """Create a new user in a tenant (Keycloak + database)."""
         # Get tenant info
         tenant = await db.fetchrow(
             "SELECT * FROM platform.tenants WHERE id = $1", tenant_id
@@ -28,11 +29,23 @@ class UserService:
         if not tenant:
             raise ValueError("Tenant not found")
 
+        realm_name = tenant.get("keycloak_realm") or tenant["slug"]
         logger.info(f"Creating user {request.email} in tenant {tenant_id}")
+
+        # Create user in Keycloak
+        roles = request.roles if request.roles else ["member"]
+        keycloak_user_id = await keycloak_service.create_user(
+            realm_name=realm_name,
+            email=request.email,
+            first_name=request.first_name,
+            last_name=request.last_name,
+            password=request.password,
+            roles=roles,
+        )
 
         # Create user in tenant database
         user_id = uuid4()
-        primary_role = request.roles[0] if request.roles else "member"
+        primary_role = roles[0]
 
         async with db.get_connection() as conn:
             await conn.execute(f'SET search_path TO "{tenant["schema_name"]}"')
@@ -45,7 +58,7 @@ class UserService:
                 request.email,
                 request.first_name,
                 request.last_name,
-                self._hash_password(request.password),
+                keycloak_user_id,  # Store Keycloak ID
                 primary_role,
             )
 
@@ -241,9 +254,9 @@ class UserService:
         return await self.get_user(tenant_id, user_id)
 
     async def delete_user(self, tenant_id: UUID, user_id: UUID) -> bool:
-        """Delete a user."""
+        """Delete a user from both Keycloak and database."""
         tenant = await db.fetchrow(
-            "SELECT schema_name FROM platform.tenants WHERE id = $1",
+            "SELECT * FROM platform.tenants WHERE id = $1",
             tenant_id,
         )
 
@@ -255,6 +268,19 @@ class UserService:
             return False
 
         logger.info(f"Deleting user {user.email} from tenant {tenant_id}")
+
+        # Get realm name
+        realm_name = tenant.get("keycloak_realm") or tenant["slug"]
+
+        # Delete from Keycloak
+        try:
+            keycloak_user = await keycloak_service.get_user_by_email(
+                realm_name, user.email
+            )
+            if keycloak_user:
+                await keycloak_service.delete_user(realm_name, keycloak_user["id"])
+        except Exception as e:
+            logger.error(f"Failed to delete user from Keycloak: {e}")
 
         # Delete from database
         await db.execute(

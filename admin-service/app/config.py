@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql://taskhub:taskhub_secret@localhost:5432/taskhub"
 
+    # Keycloak
+    keycloak_url: str = "http://localhost:8080"
+    keycloak_admin_user: str = "admin"
+    keycloak_admin_password: str = "admin"
+
     # Service
     port: int = 8000
     log_level: str = "info"

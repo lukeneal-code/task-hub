@@ -2,12 +2,16 @@
 
 ## Overview
 
-The TaskHub API is a RESTful API that provides endpoints for managing tenants, projects, tasks, and audit logs. All endpoints (except tenant lookup) require JWT authentication via Keycloak.
+TaskHub has two API services:
 
-## Base URL
+1. **Backend API (Port 3001)** - Main application API for projects, tasks, and tenant-scoped operations
+2. **Admin API (Port 8000)** - Tenant provisioning and user management
+
+## Base URLs
 
 ```
-http://localhost:3001
+Backend API:  http://localhost:3001
+Admin API:    http://localhost:8000
 ```
 
 ## Authentication
@@ -728,3 +732,275 @@ TaskHub can be configured to send webhook notifications for events:
 - `task.assigned`
 
 Contact support for webhook configuration.
+
+---
+
+# Admin API (Port 8000)
+
+The Admin API is a Python/FastAPI service for tenant provisioning and user management. It integrates directly with Keycloak to create realms, clients, and users.
+
+## Health Check
+
+```
+GET /health
+```
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "admin-service"
+}
+```
+
+---
+
+## Tenant Endpoints
+
+### List Tenants
+
+```
+GET /api/tenants
+```
+
+Lists all tenants with pagination.
+
+**Query Parameters:**
+| Name | Type | Description |
+|------|------|-------------|
+| status | string | Filter by status (active, suspended, pending) |
+| limit | number | Max results (default: 50) |
+| offset | number | Pagination offset |
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "name": "Acme Corp",
+      "slug": "acme",
+      "status": "active",
+      "schema_name": "tenant_acme",
+      "settings": {},
+      "created_at": "2024-01-15T10:30:00.000Z",
+      "updated_at": "2024-01-15T10:30:00.000Z",
+      "user_count": 5
+    }
+  ],
+  "total": 10,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### Create Tenant
+
+```
+POST /api/tenants
+```
+
+Creates a new tenant with:
+- Database schema
+- Keycloak realm with roles (admin, manager, member)
+- Keycloak client (taskhub-app)
+- Admin user
+
+**Request Body:**
+```json
+{
+  "name": "Acme Corporation",
+  "slug": "acme",
+  "admin_email": "admin@acme.com",
+  "admin_first_name": "John",
+  "admin_last_name": "Doe",
+  "admin_password": "SecurePassword123",
+  "settings": {
+    "theme": "default"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "name": "Acme Corporation",
+  "slug": "acme",
+  "status": "active",
+  "schema_name": "tenant_acme",
+  "settings": {"theme": "default"},
+  "created_at": "2024-01-15T10:30:00.000Z",
+  "updated_at": "2024-01-15T10:30:00.000Z",
+  "user_count": 1
+}
+```
+
+### Get Tenant
+
+```
+GET /api/tenants/{id}
+```
+
+Gets detailed tenant information.
+
+**Parameters:**
+| Name | Type | Location | Description |
+|------|------|----------|-------------|
+| id | uuid | path | Tenant ID |
+
+### Suspend Tenant
+
+```
+POST /api/tenants/{id}/suspend
+```
+
+Suspends a tenant, preventing user access.
+
+**Query Parameters:**
+| Name | Type | Description |
+|------|------|-------------|
+| reason | string | Suspension reason |
+
+### Reactivate Tenant
+
+```
+POST /api/tenants/{id}/reactivate
+```
+
+Reactivates a suspended tenant.
+
+### Delete Tenant
+
+```
+DELETE /api/tenants/{id}
+```
+
+Permanently deletes a tenant including:
+- Keycloak realm
+- Database schema
+- Tenant record
+
+---
+
+## User Endpoints
+
+### List Users in Tenant
+
+```
+GET /api/tenants/{tenant_id}/users
+```
+
+Lists all users in a tenant.
+
+**Query Parameters:**
+| Name | Type | Description |
+|------|------|-------------|
+| limit | number | Max results (default: 50) |
+| offset | number | Pagination offset |
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "email": "admin@acme.com",
+      "first_name": "John",
+      "last_name": "Doe",
+      "role": "admin",
+      "roles": ["admin"],
+      "status": "active",
+      "created_at": "2024-01-15T10:30:00.000Z",
+      "updated_at": "2024-01-15T10:30:00.000Z"
+    }
+  ],
+  "total": 5,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### Create User
+
+```
+POST /api/tenants/{tenant_id}/users
+```
+
+Creates a new user in both Keycloak and the tenant database.
+
+**Request Body:**
+```json
+{
+  "email": "manager@acme.com",
+  "first_name": "Jane",
+  "last_name": "Smith",
+  "password": "password123",
+  "roles": ["manager"]
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "email": "manager@acme.com",
+  "first_name": "Jane",
+  "last_name": "Smith",
+  "role": "manager",
+  "roles": ["manager"],
+  "status": "active",
+  "created_at": "2024-01-15T10:30:00.000Z",
+  "updated_at": "2024-01-15T10:30:00.000Z"
+}
+```
+
+### Get User
+
+```
+GET /api/tenants/{tenant_id}/users/{user_id}
+```
+
+Gets a specific user's details.
+
+### Assign Roles
+
+```
+POST /api/tenants/{tenant_id}/users/{user_id}/roles
+```
+
+Assigns roles to a user.
+
+**Request Body:**
+```json
+{
+  "roles": ["admin", "manager"]
+}
+```
+
+### Delete User
+
+```
+DELETE /api/tenants/{tenant_id}/users/{user_id}
+```
+
+Deletes a user from both Keycloak and the tenant database.
+
+---
+
+## Admin API Error Responses
+
+All error responses follow this format:
+
+```json
+{
+  "detail": "Error message describing what went wrong"
+}
+```
+
+| Status Code | Description |
+|-------------|-------------|
+| 400 | Bad Request - Invalid request parameters |
+| 404 | Not Found - Tenant or user not found |
+| 422 | Validation Error - Request body validation failed |
+| 500 | Internal Server Error - Server error |

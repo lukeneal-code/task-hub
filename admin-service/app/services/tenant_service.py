@@ -6,6 +6,7 @@ import re
 
 from app import database as db
 from app.models.tenant import CreateTenantRequest, TenantResponse
+from app.services.keycloak_service import keycloak_service
 
 logger = logging.getLogger(__name__)
 
@@ -17,32 +18,48 @@ class TenantService:
         """
         Provision a new tenant with:
         1. Database record
-        2. Database schema
-        3. Admin user
+        2. Keycloak realm
+        3. Database schema
+        4. Admin user (in both Keycloak and DB)
         """
         tenant_id = uuid4()
         schema_name = f"tenant_{re.sub(r'[^a-z0-9]', '_', request.slug.lower())}"
+        realm_name = request.slug  # Use slug as realm name
 
         logger.info(f"Creating tenant: {request.name} ({request.slug})")
 
         # Step 1: Insert tenant record with pending status
         await db.execute(
             """
-            INSERT INTO platform.tenants (id, name, slug, schema_name, status, settings)
-            VALUES ($1, $2, $3, $4, 'pending', $5)
+            INSERT INTO platform.tenants (id, name, slug, schema_name, keycloak_realm, status, settings)
+            VALUES ($1, $2, $3, $4, $5, 'pending', $6)
             """,
             tenant_id,
             request.name,
             request.slug,
             schema_name,
+            realm_name,
             json.dumps(request.settings or {}),
         )
 
         try:
-            # Step 2: Create database schema
+            # Step 2: Create Keycloak realm
+            await keycloak_service.create_realm(realm_name, request.name)
+
+            # Step 3: Create database schema
             await db.create_tenant_schema(schema_name)
 
-            # Step 3: Create admin user in tenant database
+            # Step 4: Create admin user in Keycloak
+            keycloak_user_id = await keycloak_service.create_user(
+                realm_name=realm_name,
+                email=request.admin_email,
+                first_name=request.admin_first_name,
+                last_name=request.admin_last_name,
+                password=request.admin_password,
+                roles=["admin"],
+            )
+
+            # Step 5: Create admin user in tenant database
             user_id = uuid4()
             async with db.get_connection() as conn:
                 await conn.execute(f'SET search_path TO "{schema_name}"')
@@ -55,10 +72,10 @@ class TenantService:
                     request.admin_email,
                     request.admin_first_name,
                     request.admin_last_name,
-                    self._hash_password(request.admin_password),
+                    keycloak_user_id,  # Store Keycloak ID instead of password hash
                 )
 
-            # Step 4: Activate tenant
+            # Step 6: Activate tenant
             await db.execute(
                 """
                 UPDATE platform.tenants
@@ -76,7 +93,7 @@ class TenantService:
         except Exception as e:
             logger.error(f"Failed to create tenant: {e}")
             # Cleanup on failure
-            await self._cleanup_failed_tenant(tenant_id, schema_name)
+            await self._cleanup_failed_tenant(tenant_id, schema_name, realm_name)
             raise
 
     def _hash_password(self, password: str) -> str:
@@ -85,10 +102,16 @@ class TenantService:
         return hashlib.sha256(password.encode()).hexdigest()
 
     async def _cleanup_failed_tenant(
-        self, tenant_id: UUID, schema_name: str
+        self, tenant_id: UUID, schema_name: str, realm_name: str
     ) -> None:
         """Clean up resources after a failed tenant creation."""
         try:
+            # Delete Keycloak realm
+            try:
+                await keycloak_service.delete_realm(realm_name)
+            except Exception as e:
+                logger.error(f"Failed to delete Keycloak realm: {e}")
+
             # Drop schema
             try:
                 await db.drop_tenant_schema(schema_name)
@@ -271,6 +294,13 @@ class TenantService:
             raise ValueError("Tenant not found")
 
         logger.info(f"Deleting tenant: {tenant_id}")
+
+        # Delete Keycloak realm
+        if tenant.get("keycloak_realm"):
+            try:
+                await keycloak_service.delete_realm(tenant["keycloak_realm"])
+            except Exception as e:
+                logger.error(f"Failed to delete Keycloak realm: {e}")
 
         # Drop database schema
         try:

@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS platform.tenants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL UNIQUE,
     slug VARCHAR(100) NOT NULL UNIQUE,
-    keycloak_realm VARCHAR(100) NOT NULL UNIQUE,
+    keycloak_realm VARCHAR(100) UNIQUE,
     schema_name VARCHAR(100) NOT NULL UNIQUE,
     status VARCHAR(50) DEFAULT 'active',
     settings JSONB DEFAULT '{}',
@@ -51,10 +51,10 @@ BEGIN
     EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I.users (
             id UUID PRIMARY KEY,
-            keycloak_id VARCHAR(255) NOT NULL UNIQUE,
             email VARCHAR(255) NOT NULL,
             first_name VARCHAR(255),
             last_name VARCHAR(255),
+            password_hash VARCHAR(255),
             role VARCHAR(50) DEFAULT ''member'',
             status VARCHAR(50) DEFAULT ''active'',
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

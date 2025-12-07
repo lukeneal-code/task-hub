@@ -11,6 +11,7 @@ TaskHub demonstrates key multi-tenant SaaS architecture concepts:
 - **SOC2 Compliance**: Comprehensive audit logging for all security-relevant events
 - **GDPR Data Isolation**: Schema-per-tenant database architecture ensures complete data separation
 - **Single Sign-On (SSO)**: Keycloak-powered authentication with social login support
+- **Admin Service**: Python/FastAPI service for tenant provisioning with React admin UI
 
 ## Architecture
 
@@ -48,6 +49,22 @@ TaskHub demonstrates key multi-tenant SaaS architecture concepts:
 │   └─────────────────┘     │       │  │   - tasks              │  │
 │                           │       │  └────────────────────────┘  │
 └───────────────────────────┘       └───────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Admin Service (Python/FastAPI)                    │
+│    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐            │
+│    │ Tenant API   │  │  User API    │  │  Keycloak    │            │
+│    │ /tenants/*   │  │  /users/*    │  │  Integration │            │
+│    └──────────────┘  └──────────────┘  └──────────────┘            │
+└─────────────────────────────┬───────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Admin UI (React/Vite)                           │
+│    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐            │
+│    │ Tenant List  │  │Create Tenant │  │ User Mgmt    │            │
+│    └──────────────┘  └──────────────┘  └──────────────┘            │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
@@ -56,6 +73,7 @@ TaskHub demonstrates key multi-tenant SaaS architecture concepts:
 
 - Docker and Docker Compose
 - Node.js 18+ (for local development)
+- Python 3.11+ (for admin service local development)
 - Git
 
 ### Setup
@@ -65,17 +83,12 @@ TaskHub demonstrates key multi-tenant SaaS architecture concepts:
    cd task-hub
    ```
 
-2. **Copy environment file:**
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Start all services:**
+2. **Start all services:**
    ```bash
    docker-compose up -d
    ```
 
-4. **Wait for services to be ready** (first startup takes ~2-3 minutes):
+3. **Wait for services to be ready** (first startup takes ~2-3 minutes):
    ```bash
    # Check service health
    docker-compose ps
@@ -84,20 +97,25 @@ TaskHub demonstrates key multi-tenant SaaS architecture concepts:
    docker-compose logs -f
    ```
 
-5. **Access the application:**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:3001
-   - Keycloak Admin: http://localhost:8080/admin (admin/admin)
+4. **Access the applications:**
+
+   | Service | URL | Description |
+   |---------|-----|-------------|
+   | Frontend | http://localhost:3000 | Main application (tenant login) |
+   | Backend API | http://localhost:3001 | REST API for frontend |
+   | Admin UI | http://localhost:5173 | Tenant management dashboard |
+   | Admin API | http://localhost:8000 | Tenant provisioning API |
+   | Keycloak | http://localhost:8080 | Identity provider (admin/admin) |
 
 ### Demo Credentials
 
-For the `demo` tenant:
+For the `demo` tenant (http://localhost:3000/demo):
 
 | Role    | Email             | Password     |
 |---------|-------------------|--------------|
-| Admin   | admin@demo.com    | Admin123!    |
-| Manager | manager@demo.com  | Manager123!  |
-| Member  | member@demo.com   | Member123!   |
+| Admin   | admin@demo.com    | password123  |
+| Manager | manager@demo.com  | password123  |
+| Member  | member@demo.com   | password123  |
 
 ## Project Structure
 
@@ -121,6 +139,18 @@ task-hub/
 │       ├── hooks/             # Custom hooks
 │       ├── services/          # API client
 │       └── types/             # TypeScript types
+├── admin-service/              # Python/FastAPI Admin Service
+│   ├── app/
+│   │   ├── api/               # REST endpoints
+│   │   ├── models/            # Pydantic models
+│   │   └── services/          # Business logic
+│   │       ├── tenant_service.py   # Tenant provisioning
+│   │       ├── user_service.py     # User management
+│   │       └── keycloak_service.py # Keycloak integration
+│   └── admin-ui/              # React/Vite Admin UI
+│       └── src/
+│           ├── pages/         # TenantList, TenantCreate, etc.
+│           └── services/      # API client
 ├── keycloak/                   # Keycloak configuration
 │   ├── realm-config/          # Realm JSON exports
 │   └── themes/                # Custom login themes
@@ -131,7 +161,32 @@ task-hub/
 
 ## Key Features
 
-### 1. Multi-Tenant Authentication
+### 1. Admin Service - Tenant Provisioning
+
+The admin service (Python/FastAPI) handles automated tenant lifecycle:
+
+```bash
+# Create a new tenant via Admin API
+curl -X POST http://localhost:8000/api/tenants \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Acme Corporation",
+    "slug": "acme",
+    "admin_email": "admin@acme.com",
+    "admin_first_name": "John",
+    "admin_last_name": "Doe",
+    "admin_password": "SecurePassword123"
+  }'
+```
+
+This automatically:
+1. Creates tenant record in platform database
+2. Creates Keycloak realm with roles (admin, manager, member)
+3. Creates `taskhub-app` client in realm
+4. Creates database schema (`tenant_acme`)
+5. Creates admin user in both Keycloak and database
+
+### 2. Multi-Tenant Authentication
 
 Each tenant has their own Keycloak realm, providing:
 - Isolated user databases
@@ -148,7 +203,7 @@ const kc = new Keycloak({
 });
 ```
 
-### 2. Role-Based Access Control
+### 3. Role-Based Access Control
 
 Three roles with hierarchical permissions:
 
@@ -167,7 +222,7 @@ router.post('/projects',
 );
 ```
 
-### 3. Schema-Per-Tenant Data Isolation
+### 4. Schema-Per-Tenant Data Isolation
 
 Each tenant's data is isolated in a separate PostgreSQL schema:
 
@@ -185,7 +240,7 @@ tenant_acme.projects
 ...
 ```
 
-### 4. JWT Token Validation
+### 5. JWT Token Validation
 
 Tokens are validated against the correct Keycloak realm:
 
@@ -199,14 +254,6 @@ await jose.jwtVerify(token, jwks, {
   issuer: `${keycloakUrl}/realms/${realm}`,
 });
 ```
-
-### 5. Tenant Settings Page
-
-Admins can access organization settings at `/{tenant}/settings`:
-- View organization information (name, slug, tenant ID)
-- View authentication configuration (Keycloak realm, SSO provider)
-- Access Keycloak Admin Console for advanced identity configuration
-- View security and compliance status (audit logging, data isolation, RBAC)
 
 ### 6. SOC2 Compliant Audit Logging
 
@@ -226,41 +273,31 @@ await auditService.log({
 
 ## API Documentation
 
-### Tenant Management
+### Admin Service API (Port 8000)
 
-| Method | Endpoint                    | Description              | Auth    |
-|--------|-----------------------------|--------------------------| --------|
-| POST   | /api/tenants                | Create new tenant        | None*   |
-| GET    | /api/tenants                | List all tenants         | Admin   |
-| GET    | /api/tenants/lookup/:slug   | Lookup tenant by slug    | None    |
-| PATCH  | /api/tenants/:id/settings   | Update tenant settings   | Admin   |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/tenants | List all tenants |
+| POST | /api/tenants | Create new tenant (provisions Keycloak + DB) |
+| GET | /api/tenants/{id} | Get tenant details |
+| POST | /api/tenants/{id}/suspend | Suspend tenant |
+| POST | /api/tenants/{id}/reactivate | Reactivate tenant |
+| DELETE | /api/tenants/{id} | Delete tenant |
+| GET | /api/tenants/{id}/users | List users in tenant |
+| POST | /api/tenants/{id}/users | Create user (provisions in Keycloak) |
+| DELETE | /api/tenants/{id}/users/{user_id} | Delete user |
+| POST | /api/tenants/{id}/users/{user_id}/roles | Assign roles |
 
-### Projects
+### Backend API (Port 3001)
 
-| Method | Endpoint              | Description           | Auth           |
-|--------|-----------------------|-----------------------|----------------|
-| GET    | /api/projects         | List projects         | Any role       |
-| POST   | /api/projects         | Create project        | Admin, Manager |
-| GET    | /api/projects/:id     | Get project           | Any role       |
-| PATCH  | /api/projects/:id     | Update project        | Admin, Manager |
-| DELETE | /api/projects/:id     | Delete project        | Admin          |
-
-### Tasks
-
-| Method | Endpoint                       | Description           | Auth           |
-|--------|--------------------------------|-----------------------|----------------|
-| GET    | /api/projects/:id/tasks        | List tasks            | Any role       |
-| POST   | /api/projects/:id/tasks        | Create task           | Admin, Manager |
-| GET    | /api/tasks/:id                 | Get task              | Any role       |
-| PATCH  | /api/tasks/:id                 | Update task           | Any role       |
-| DELETE | /api/tasks/:id                 | Delete task           | Any role       |
-
-### Audit Logs
-
-| Method | Endpoint              | Description           | Auth   |
-|--------|-----------------------|-----------------------|--------|
-| GET    | /api/audit/logs       | Query audit logs      | Admin  |
-| GET    | /api/audit/summary    | Audit summary report  | Admin  |
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | /api/tenants/lookup/:slug | Lookup tenant by slug | None |
+| GET | /api/projects | List projects | Any role |
+| POST | /api/projects | Create project | Admin, Manager |
+| GET | /api/projects/:id/tasks | List tasks | Any role |
+| POST | /api/projects/:id/tasks | Create task | Any role |
+| GET | /api/audit/logs | Query audit logs | Admin |
 
 ## Configuration
 
@@ -283,31 +320,57 @@ PORT=3001
 # Frontend
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:8080
+
+# Admin Service
+DATABASE_URL=postgresql://taskhub:taskhub_secret@postgres:5432/taskhub
+KEYCLOAK_URL=http://keycloak:8080
+KEYCLOAK_ADMIN_USER=admin
+KEYCLOAK_ADMIN_PASSWORD=admin
 ```
 
 ## Creating New Tenants
 
-### Via API
+### Via Admin UI
+
+1. Navigate to http://localhost:5173
+2. Click "Create Tenant"
+3. Fill in organization details and admin credentials
+4. Click "Create Tenant"
+
+The tenant is immediately available at http://localhost:3000/{slug}
+
+### Via Admin API
 
 ```bash
-curl -X POST http://localhost:3001/api/tenants \
+curl -X POST http://localhost:8000/api/tenants \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Acme Corporation",
     "slug": "acme",
-    "adminEmail": "admin@acme.com",
-    "adminFirstName": "John",
-    "adminLastName": "Doe",
-    "adminPassword": "SecurePassword123!"
+    "admin_email": "admin@acme.com",
+    "admin_first_name": "John",
+    "admin_last_name": "Doe",
+    "admin_password": "SecurePassword123"
   }'
 ```
 
-This will:
-1. Create a tenant record
-2. Create a PostgreSQL schema (`tenant_acme`)
-3. Create a Keycloak realm (`acme`)
-4. Create realm roles (admin, manager, member)
-5. Create the admin user with admin role
+### Adding Users to a Tenant
+
+```bash
+# Get tenant ID first
+TENANT_ID=$(curl -s http://localhost:8000/api/tenants | jq -r '.data[] | select(.slug=="acme") | .id')
+
+# Create a new user
+curl -X POST "http://localhost:8000/api/tenants/$TENANT_ID/users" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "manager@acme.com",
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "password": "password123",
+    "roles": ["manager"]
+  }'
+```
 
 ## Security Considerations
 
@@ -337,6 +400,16 @@ npm run dev
 
 # Frontend
 cd frontend
+npm install
+npm run dev
+
+# Admin Service
+cd admin-service
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+
+# Admin UI
+cd admin-service/admin-ui
 npm install
 npm run dev
 ```
@@ -371,3 +444,12 @@ docker-compose up -d keycloak
 **Database connection errors:**
 - Verify PostgreSQL is running: `docker-compose ps`
 - Check DATABASE_URL in environment
+
+**Redirect loop after login:**
+- Clear browser cookies for localhost
+- Ensure the Keycloak realm has the `taskhub-app` client configured
+- Check that the tenant has a valid `keycloak_realm` in the database
+
+**Admin service can't connect to Keycloak:**
+- Ensure Keycloak is healthy: `docker-compose ps`
+- Verify `KEYCLOAK_URL` is set to `http://keycloak:8080` (Docker network)
