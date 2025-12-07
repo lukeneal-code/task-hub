@@ -98,36 +98,62 @@ describe('Multi-Tenant Isolation', () => {
   describe('Project List Isolation', () => {
     it('Alpha project list contains only Alpha projects', async () => {
       const alphaClient = await createClientForRole('alpha', 'admin');
-      const response = await alphaClient.get('/api/projects');
+      const betaClient = await createClientForRole('beta', 'admin');
 
+      // Create a project in each tenant to ensure we have something to test
+      const alphaProjectName = `Alpha Isolation Test ${Date.now()}`;
+      const betaProjectName = `Beta Isolation Test ${Date.now()}`;
+
+      const alphaCreate = await alphaClient.post('/api/projects', { name: alphaProjectName });
+      expect([200, 201]).toContain(alphaCreate.status);
+      const alphaProjectId = (alphaCreate.data.data || alphaCreate.data).id;
+
+      const betaCreate = await betaClient.post('/api/projects', { name: betaProjectName });
+      expect([200, 201]).toContain(betaCreate.status);
+      const betaProjectId = (betaCreate.data.data || betaCreate.data).id;
+
+      // Now check Alpha's project list
+      const response = await alphaClient.get('/api/projects');
       expect(response.status).toBe(200);
 
       const projects = response.data.data || response.data;
       const projectIds = projects.map((p: any) => p.id);
 
-      // Should contain Alpha projects
-      expect(projectIds).toContain(TEST_CONFIG.projects.alpha.one.id);
+      // Should contain the Alpha project we just created
+      expect(projectIds).toContain(alphaProjectId);
 
-      // Should NOT contain Beta projects
-      expect(projectIds).not.toContain(TEST_CONFIG.projects.beta.one.id);
-      expect(projectIds).not.toContain(TEST_CONFIG.projects.beta.two.id);
+      // Should NOT contain the Beta project we just created
+      expect(projectIds).not.toContain(betaProjectId);
     });
 
     it('Beta project list contains only Beta projects', async () => {
+      const alphaClient = await createClientForRole('alpha', 'admin');
       const betaClient = await createClientForRole('beta', 'admin');
-      const response = await betaClient.get('/api/projects');
 
+      // Create a project in each tenant to ensure we have something to test
+      const alphaProjectName = `Alpha Isolation Test ${Date.now()}`;
+      const betaProjectName = `Beta Isolation Test ${Date.now()}`;
+
+      const alphaCreate = await alphaClient.post('/api/projects', { name: alphaProjectName });
+      expect([200, 201]).toContain(alphaCreate.status);
+      const alphaProjectId = (alphaCreate.data.data || alphaCreate.data).id;
+
+      const betaCreate = await betaClient.post('/api/projects', { name: betaProjectName });
+      expect([200, 201]).toContain(betaCreate.status);
+      const betaProjectId = (betaCreate.data.data || betaCreate.data).id;
+
+      // Now check Beta's project list
+      const response = await betaClient.get('/api/projects');
       expect(response.status).toBe(200);
 
       const projects = response.data.data || response.data;
       const projectIds = projects.map((p: any) => p.id);
 
-      // Should contain Beta projects
-      expect(projectIds).toContain(TEST_CONFIG.projects.beta.one.id);
+      // Should contain the Beta project we just created
+      expect(projectIds).toContain(betaProjectId);
 
-      // Should NOT contain Alpha projects
-      expect(projectIds).not.toContain(TEST_CONFIG.projects.alpha.one.id);
-      expect(projectIds).not.toContain(TEST_CONFIG.projects.alpha.two.id);
+      // Should NOT contain the Alpha project we just created
+      expect(projectIds).not.toContain(alphaProjectId);
     });
   });
 

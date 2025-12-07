@@ -120,11 +120,29 @@ jobs:
               -d "{\"name\": \"$role\"}"
           done
 
-          # Create test user in alpha
-          curl -s -X POST http://localhost:8081/admin/realms/alpha/users \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"username": "admin@alpha.com", "email": "admin@alpha.com", "enabled": true, "emailVerified": true, "credentials": [{"type": "password", "value": "password123", "temporary": false}]}'
+          # Create test users in alpha and assign roles
+          for user_role in "admin:admin" "manager:manager" "member:member"; do
+            IFS=':' read -r user role <<< "$user_role"
+            # Create user
+            curl -s -X POST http://localhost:8081/admin/realms/alpha/users \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"username\": \"${user}@alpha.com\", \"email\": \"${user}@alpha.com\", \"enabled\": true, \"emailVerified\": true, \"credentials\": [{\"type\": \"password\", \"value\": \"password123\", \"temporary\": false}]}"
+
+            # Get user ID
+            USER_ID=$(curl -s "http://localhost:8081/admin/realms/alpha/users?username=${user}@alpha.com" \
+              -H "Authorization: Bearer $TOKEN" | jq -r '.[0].id')
+
+            # Get role representation
+            ROLE_REP=$(curl -s "http://localhost:8081/admin/realms/alpha/roles/${role}" \
+              -H "Authorization: Bearer $TOKEN")
+
+            # Assign role to user
+            curl -s -X POST "http://localhost:8081/admin/realms/alpha/users/${USER_ID}/role-mappings/realm" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "[${ROLE_REP}]"
+          done
 
           # Create beta realm
           curl -s -X POST http://localhost:8081/admin/realms \
@@ -146,11 +164,29 @@ jobs:
               -d "{\"name\": \"$role\"}"
           done
 
-          # Create test user in beta
-          curl -s -X POST http://localhost:8081/admin/realms/beta/users \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"username": "admin@beta.com", "email": "admin@beta.com", "enabled": true, "emailVerified": true, "credentials": [{"type": "password", "value": "password123", "temporary": false}]}'
+          # Create test users in beta and assign roles
+          for user_role in "admin:admin" "manager:manager" "member:member"; do
+            IFS=':' read -r user role <<< "$user_role"
+            # Create user
+            curl -s -X POST http://localhost:8081/admin/realms/beta/users \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"username\": \"${user}@beta.com\", \"email\": \"${user}@beta.com\", \"enabled\": true, \"emailVerified\": true, \"credentials\": [{\"type\": \"password\", \"value\": \"password123\", \"temporary\": false}]}"
+
+            # Get user ID
+            USER_ID=$(curl -s "http://localhost:8081/admin/realms/beta/users?username=${user}@beta.com" \
+              -H "Authorization: Bearer $TOKEN" | jq -r '.[0].id')
+
+            # Get role representation
+            ROLE_REP=$(curl -s "http://localhost:8081/admin/realms/beta/roles/${role}" \
+              -H "Authorization: Bearer $TOKEN")
+
+            # Assign role to user
+            curl -s -X POST "http://localhost:8081/admin/realms/beta/users/${USER_ID}/role-mappings/realm" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "[${ROLE_REP}]"
+          done
 
       - name: Run backend integration tests
         working-directory: backend
@@ -395,7 +431,7 @@ jobs:
             -d "username=admin" \
             -d "password=admin" | jq -r '.access_token')
 
-          # Setup realms (same as backend-integration job)
+          # Setup realms
           for realm in alpha beta; do
             curl -s -X POST http://localhost:8081/admin/realms \
               -H "Authorization: Bearer $TOKEN" \
@@ -413,18 +449,31 @@ jobs:
                 -H "Content-Type: application/json" \
                 -d "{\"name\": \"$role\"}"
             done
+
+            # Create test users and assign roles
+            for user_role in "admin:admin" "manager:manager" "member:member"; do
+              IFS=':' read -r user role <<< "$user_role"
+              # Create user
+              curl -s -X POST "http://localhost:8081/admin/realms/$realm/users" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"username\": \"${user}@${realm}.com\", \"email\": \"${user}@${realm}.com\", \"enabled\": true, \"emailVerified\": true, \"credentials\": [{\"type\": \"password\", \"value\": \"password123\", \"temporary\": false}]}"
+
+              # Get user ID
+              USER_ID=$(curl -s "http://localhost:8081/admin/realms/$realm/users?username=${user}@${realm}.com" \
+                -H "Authorization: Bearer $TOKEN" | jq -r '.[0].id')
+
+              # Get role representation
+              ROLE_REP=$(curl -s "http://localhost:8081/admin/realms/$realm/roles/${role}" \
+                -H "Authorization: Bearer $TOKEN")
+
+              # Assign role to user
+              curl -s -X POST "http://localhost:8081/admin/realms/$realm/users/${USER_ID}/role-mappings/realm" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "[${ROLE_REP}]"
+            done
           done
-
-          # Create test users
-          curl -s -X POST http://localhost:8081/admin/realms/alpha/users \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"username": "admin@alpha.com", "email": "admin@alpha.com", "enabled": true, "credentials": [{"type": "password", "value": "password123", "temporary": false}]}'
-
-          curl -s -X POST http://localhost:8081/admin/realms/beta/users \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"username": "admin@beta.com", "email": "admin@beta.com", "enabled": true, "credentials": [{"type": "password", "value": "password123", "temporary": false}]}'
 
       - name: Run isolation tests
         working-directory: backend
