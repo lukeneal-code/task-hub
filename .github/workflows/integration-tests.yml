@@ -65,7 +65,7 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install
 
       - name: Initialize database
         run: |
@@ -312,7 +312,7 @@ jobs:
       - name: Install E2E dependencies
         working-directory: e2e
         run: |
-          npm ci
+          npm install
           npx playwright install --with-deps chromium
 
       - name: Run E2E smoke tests
@@ -359,7 +359,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm ci
+        run: npm install
 
       - name: Start test infrastructure
         run: |
