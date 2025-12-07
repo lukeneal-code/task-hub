@@ -16,7 +16,7 @@ class TestHealthEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data.get("status") == "ok"
+        assert data.get("status") == "healthy"
 
     def test_health_includes_service_name(self, http_client: httpx.Client):
         """Health endpoint should include service information."""
@@ -34,7 +34,7 @@ class TestHealthEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data.get("status") == "ok"
+        assert data.get("status") == "healthy"
 
 
 @pytest.mark.integration

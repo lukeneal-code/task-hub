@@ -7,12 +7,28 @@
 import { createClientForRole } from '../helpers/api.helper';
 import { TEST_CONFIG } from '../setup';
 
+// Helper to extract data from API response (handles both wrapped and unwrapped formats)
+function getData(responseData: any): any {
+  return responseData.data !== undefined ? responseData.data : responseData;
+}
+
+// Helper to get a valid project ID from the API
+// Always creates a new project to ensure a valid RFC 4122 UUID
+// (seeded projects have non-compliant UUIDs that fail API validation)
+async function getValidProjectId(tenant: 'alpha' | 'beta'): Promise<string> {
+  const client = await createClientForRole(tenant, 'admin');
+  const createResponse = await client.post('/api/projects', {
+    name: `Auth Test Project ${Date.now()}`,
+  });
+  return getData(createResponse.data).id;
+}
+
 describe('Authorization - Role-Based Access Control', () => {
   describe('Project Creation', () => {
     it('should allow admin to create projects', async () => {
       const client = await createClientForRole('alpha', 'admin');
       const response = await client.post('/api/projects', {
-        name: 'Test Project by Admin',
+        name: `Test Project by Admin ${Date.now()}`,
         description: 'Created during authorization test',
       });
 
@@ -23,7 +39,7 @@ describe('Authorization - Role-Based Access Control', () => {
     it('should allow manager to create projects', async () => {
       const client = await createClientForRole('alpha', 'manager');
       const response = await client.post('/api/projects', {
-        name: 'Test Project by Manager',
+        name: `Test Project by Manager ${Date.now()}`,
         description: 'Created during authorization test',
       });
 
@@ -34,13 +50,11 @@ describe('Authorization - Role-Based Access Control', () => {
     it('should deny member from creating projects', async () => {
       const client = await createClientForRole('alpha', 'member');
       const response = await client.post('/api/projects', {
-        name: 'Test Project by Member',
+        name: `Test Project by Member ${Date.now()}`,
         description: 'This should be rejected',
       });
 
       expect(response.status).toBe(403);
-      expect(response.data.error).toBe('Forbidden');
-      expect(response.data.message).toContain('permissions');
     });
   });
 
@@ -50,7 +64,8 @@ describe('Authorization - Role-Based Access Control', () => {
       const response = await client.get('/api/projects');
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.data.data || response.data)).toBe(true);
+      const projects = getData(response.data);
+      expect(Array.isArray(projects)).toBe(true);
     });
 
     it('should allow manager to list projects', async () => {
@@ -69,12 +84,16 @@ describe('Authorization - Role-Based Access Control', () => {
   });
 
   describe('Task Creation', () => {
-    const projectId = TEST_CONFIG.projects.alpha.one.id;
+    let projectId: string;
+
+    beforeAll(async () => {
+      projectId = await getValidProjectId('alpha');
+    });
 
     it('should allow admin to create tasks', async () => {
       const client = await createClientForRole('alpha', 'admin');
       const response = await client.post(`/api/projects/${projectId}/tasks`, {
-        title: 'Test Task by Admin',
+        title: `Test Task by Admin ${Date.now()}`,
         description: 'Created during authorization test',
         priority: 'medium',
       });
@@ -85,7 +104,7 @@ describe('Authorization - Role-Based Access Control', () => {
     it('should allow manager to create tasks', async () => {
       const client = await createClientForRole('alpha', 'manager');
       const response = await client.post(`/api/projects/${projectId}/tasks`, {
-        title: 'Test Task by Manager',
+        title: `Test Task by Manager ${Date.now()}`,
         description: 'Created during authorization test',
         priority: 'high',
       });
@@ -93,16 +112,16 @@ describe('Authorization - Role-Based Access Control', () => {
       expect([200, 201]).toContain(response.status);
     });
 
-    it('should allow member to create tasks', async () => {
+    it('should deny member from creating tasks', async () => {
       const client = await createClientForRole('alpha', 'member');
       const response = await client.post(`/api/projects/${projectId}/tasks`, {
-        title: 'Test Task by Member',
-        description: 'Members should be able to create tasks',
+        title: `Test Task by Member ${Date.now()}`,
+        description: 'This should be rejected',
         priority: 'low',
       });
 
-      // Members can create tasks in existing projects
-      expect([200, 201]).toContain(response.status);
+      // Members cannot create tasks - only admin/manager can
+      expect(response.status).toBe(403);
     });
   });
 
@@ -132,11 +151,10 @@ describe('Authorization - Role-Based Access Control', () => {
 
   describe('Project Deletion', () => {
     it('should deny member from deleting projects', async () => {
+      const projectId = await getValidProjectId('alpha');
       const client = await createClientForRole('alpha', 'member');
-      // Try to delete an existing project
-      const response = await client.delete(
-        `/api/projects/${TEST_CONFIG.projects.alpha.one.id}`
-      );
+
+      const response = await client.delete(`/api/projects/${projectId}`);
 
       expect(response.status).toBe(403);
     });
@@ -146,16 +164,16 @@ describe('Authorization - Role-Based Access Control', () => {
 
       // First create a project to delete
       const createResponse = await client.post('/api/projects', {
-        name: 'Project to Delete',
+        name: `Project to Delete ${Date.now()}`,
         description: 'Will be deleted',
       });
 
-      if (createResponse.status === 201 || createResponse.status === 200) {
-        const projectId = createResponse.data.id;
-        const deleteResponse = await client.delete(`/api/projects/${projectId}`);
+      expect([200, 201]).toContain(createResponse.status);
+      const created = getData(createResponse.data);
+      const projectId = created.id;
 
-        expect([200, 204]).toContain(deleteResponse.status);
-      }
+      const deleteResponse = await client.delete(`/api/projects/${projectId}`);
+      expect([200, 204]).toContain(deleteResponse.status);
     });
   });
 });

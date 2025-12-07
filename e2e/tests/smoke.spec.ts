@@ -21,6 +21,7 @@ test.describe('Smoke Tests', () => {
       // Check for either the login button or Keycloak redirect
       const url = page.url();
       const hasLoginContent = url.includes('keycloak') ||
+        url.includes('/realms/') ||
         (await page.getByRole('button', { name: /login|sign in/i }).count()) > 0 ||
         (await page.locator('text=/login|sign in|authenticate/i').count()) > 0;
 
@@ -47,7 +48,7 @@ test.describe('Smoke Tests', () => {
 
       expect(response.ok()).toBe(true);
       const data = await response.json();
-      expect(data.status).toBe('ok');
+      expect(data.status).toBe('healthy');
     });
 
     test('admin API is healthy', async ({ request }) => {
@@ -56,7 +57,7 @@ test.describe('Smoke Tests', () => {
 
       expect(response.ok()).toBe(true);
       const data = await response.json();
-      expect(data.status).toBe('ok');
+      expect(data.status).toBe('healthy');
     });
   });
 
@@ -67,8 +68,10 @@ test.describe('Smoke Tests', () => {
 
       expect(response.ok()).toBe(true);
       const data = await response.json();
-      expect(data.slug).toBe('alpha');
-      expect(data.keycloak_realm).toBe('alpha');
+      // API wraps response in { success, data }
+      expect(data.success).toBe(true);
+      expect(data.data.slug).toBe('alpha');
+      expect(data.data.realm).toBe('alpha');
     });
 
     test('can lookup beta tenant', async ({ request }) => {
@@ -77,7 +80,8 @@ test.describe('Smoke Tests', () => {
 
       expect(response.ok()).toBe(true);
       const data = await response.json();
-      expect(data.slug).toBe('beta');
+      expect(data.success).toBe(true);
+      expect(data.data.slug).toBe('beta');
     });
 
     test('returns 404 for non-existent tenant', async ({ request }) => {

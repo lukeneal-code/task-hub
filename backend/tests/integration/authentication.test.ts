@@ -78,9 +78,10 @@ describe('Authentication', () => {
       const response = await apiClient.get('/api/tenants/lookup/alpha');
 
       expect(response.status).toBe(200);
-      expect(response.data).toHaveProperty('id');
-      expect(response.data).toHaveProperty('slug', 'alpha');
-      expect(response.data).toHaveProperty('keycloak_realm');
+      expect(response.data.success).toBe(true);
+      expect(response.data.data).toHaveProperty('id');
+      expect(response.data.data).toHaveProperty('slug', 'alpha');
+      expect(response.data.data).toHaveProperty('realm');
     });
 
     it('should return 404 for non-existent tenant', async () => {
@@ -99,7 +100,7 @@ describe('Authentication', () => {
         // If we can get a token for a suspended tenant user,
         // the request should be rejected with 403
         // This test may need Keycloak setup for suspended tenant
-        expect(lookupResponse.data.status).toBe('suspended');
+        expect(lookupResponse.data.data.status).toBe('suspended');
       }
     });
   });

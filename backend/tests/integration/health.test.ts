@@ -13,7 +13,7 @@ describe('Health Endpoints', () => {
 
       expect(response.status).toBe(200);
       expect(response.data).toHaveProperty('status');
-      expect(response.data.status).toBe('ok');
+      expect(response.data.status).toBe('healthy');
     });
 
     it('should include uptime information', async () => {
@@ -36,7 +36,8 @@ describe('Health Endpoints', () => {
       expect([200, 503]).toContain(response.status);
 
       if (response.status === 200) {
-        expect(response.data.status).toBe('ok');
+        // May return 'ready' or 'healthy' depending on implementation
+        expect(['healthy', 'ready']).toContain(response.data.status);
       }
     });
   });

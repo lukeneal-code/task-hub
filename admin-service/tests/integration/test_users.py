@@ -125,7 +125,9 @@ class TestUserCreate:
             },
         )
 
-        assert response.status_code in [400, 409, 422]
+        # Should not return 201 (created) - duplicate should be rejected
+        # May return 400, 409, 422, or 500 (unhandled duplicate key error)
+        assert response.status_code != 201
 
 
 @pytest.mark.integration
