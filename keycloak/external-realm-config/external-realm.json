@@ -1,0 +1,124 @@
+{
+  "realm": "external",
+  "displayName": "External Enterprise IDP",
+  "enabled": true,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": false,
+  "defaultSignatureAlgorithm": "RS256",
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "employee",
+        "description": "External enterprise employee"
+      },
+      {
+        "name": "contractor",
+        "description": "External contractor"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "http://localhost:8080/realms/demo",
+      "name": "TaskHub Main Keycloak",
+      "description": "SAML Service Provider - Main Keycloak demo realm",
+      "enabled": true,
+      "protocol": "saml",
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:8080/realms/demo/broker/external-saml-idp/endpoint",
+        "http://localhost:8080/realms/demo/broker/external-saml-idp/endpoint/*",
+        "http://localhost:8080/*"
+      ],
+      "attributes": {
+        "saml.assertion.signature": "true",
+        "saml.server.signature": "true",
+        "saml.client.signature": "false",
+        "saml.signature.algorithm": "RSA_SHA256",
+        "saml.force.post.binding": "true",
+        "saml_assertion_consumer_url_post": "http://localhost:8080/realms/demo/broker/external-saml-idp/endpoint",
+        "saml_single_logout_service_url_post": "http://localhost:8080/realms/demo/broker/external-saml-idp/endpoint",
+        "saml_name_id_format": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+      },
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "urn:oasis:names:tc:SAML:2.0:attrname-format:uri",
+            "user.attribute": "email",
+            "friendly.name": "email",
+            "attribute.name": "email"
+          }
+        },
+        {
+          "name": "firstName",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "urn:oasis:names:tc:SAML:2.0:attrname-format:uri",
+            "user.attribute": "firstName",
+            "friendly.name": "firstName",
+            "attribute.name": "firstName"
+          }
+        },
+        {
+          "name": "lastName",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "urn:oasis:names:tc:SAML:2.0:attrname-format:uri",
+            "user.attribute": "lastName",
+            "friendly.name": "lastName",
+            "attribute.name": "lastName"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "external.user@enterprise.com",
+      "email": "external.user@enterprise.com",
+      "firstName": "External",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "External123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["employee"]
+    },
+    {
+      "username": "external.contractor@partner.com",
+      "email": "external.contractor@partner.com",
+      "firstName": "External",
+      "lastName": "Contractor",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Contractor123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["contractor"]
+    }
+  ]
+}

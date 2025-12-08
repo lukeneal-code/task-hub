@@ -13,6 +13,12 @@ export interface User {
   realm: string;
 }
 
+// Identity Provider types
+export interface IdentityProvider {
+  alias: string;
+  displayName: string;
+}
+
 // Tenant types
 export interface Tenant {
   id: string;
@@ -24,6 +30,7 @@ export interface Tenant {
     theme?: string;
     logo?: string;
   };
+  identityProviders?: IdentityProvider[];
 }
 
 // Project types

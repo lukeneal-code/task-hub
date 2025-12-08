@@ -141,5 +141,77 @@
       ],
       "realmRoles": ["member"]
     }
+  ],
+  "identityProviders": [
+    {
+      "alias": "external-saml-idp",
+      "displayName": "External Enterprise SSO",
+      "providerId": "saml",
+      "enabled": true,
+      "trustEmail": true,
+      "storeToken": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "entityId": "http://localhost:8080/realms/demo",
+        "singleSignOnServiceUrl": "http://localhost:8082/realms/external/protocol/saml",
+        "singleLogoutServiceUrl": "http://localhost:8082/realms/external/protocol/saml",
+        "nameIDPolicyFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+        "principalType": "ATTRIBUTE",
+        "principalAttribute": "email",
+        "signatureAlgorithm": "RSA_SHA256",
+        "xmlSigKeyInfoKeyNameTransformer": "KEY_ID",
+        "wantAuthnRequestsSigned": "false",
+        "wantAssertionsSigned": "true",
+        "wantAssertionsEncrypted": "false",
+        "forceAuthn": "false",
+        "validateSignature": "false",
+        "postBindingResponse": "true",
+        "postBindingAuthnRequest": "true",
+        "postBindingLogout": "true",
+        "syncMode": "INHERIT"
+      }
+    }
+  ],
+  "identityProviderMappers": [
+    {
+      "name": "email-mapper",
+      "identityProviderAlias": "external-saml-idp",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "user.attribute": "email",
+        "attribute.name": "email"
+      }
+    },
+    {
+      "name": "firstName-mapper",
+      "identityProviderAlias": "external-saml-idp",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "user.attribute": "firstName",
+        "attribute.name": "firstName"
+      }
+    },
+    {
+      "name": "lastName-mapper",
+      "identityProviderAlias": "external-saml-idp",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "user.attribute": "lastName",
+        "attribute.name": "lastName"
+      }
+    },
+    {
+      "name": "default-role-mapper",
+      "identityProviderAlias": "external-saml-idp",
+      "identityProviderMapper": "hardcoded-role-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "role": "member"
+      }
+    }
   ]
 }

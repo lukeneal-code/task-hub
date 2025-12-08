@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { body, param, query } from 'express-validator';
 import { tenantService, CreateTenantRequest } from '../services/tenant.service';
+import keycloakService from '../services/keycloak.service';
 import { validate } from '../middleware/validation.middleware';
 import { asyncHandler, AppError } from '../middleware/error.middleware';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -142,6 +143,7 @@ router.get(
  * Looks up a tenant by slug.
  * Used by the frontend to determine which Keycloak realm to authenticate against.
  * This is a public endpoint (no auth required).
+ * Also returns configured identity providers for the login page.
  */
 router.get(
   '/lookup/:slug',
@@ -155,7 +157,22 @@ router.get(
       throw new AppError('Tenant not found', 404);
     }
 
-    // Only return minimal info needed for login
+    // Fetch configured identity providers for this tenant
+    let identityProviders: Array<{ alias: string; displayName: string }> = [];
+    try {
+      const idps = await keycloakService.getIdentityProviders(tenant.keycloak_realm);
+      identityProviders = idps
+        .filter((idp: any) => idp.enabled)
+        .map((idp: any) => ({
+          alias: idp.alias,
+          displayName: idp.displayName || idp.alias,
+        }));
+    } catch (error) {
+      logger.warn('Failed to fetch IDPs for tenant', { tenant: tenant.slug, error });
+      // Continue without IDPs - not a fatal error
+    }
+
+    // Return minimal info needed for login plus identity providers
     res.json({
       success: true,
       data: {
@@ -168,6 +185,7 @@ router.get(
           theme: tenant.settings.theme,
           logo: tenant.settings.logo,
         },
+        identityProviders,
       },
     });
   })

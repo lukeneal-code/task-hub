@@ -30,6 +30,7 @@ interface AuthContextType {
   isLoading: boolean;
   error: string | null;
   login: () => void;
+  loginWithIdp: (idpAlias: string) => void;
   logout: () => void;
   hasRole: (role: string) => boolean;
   getToken: () => string | null;
@@ -171,6 +172,16 @@ export function AuthProvider({ children, tenantSlug }: AuthProviderProps) {
     }
   }, [keycloak]);
 
+  // Login with specific identity provider (e.g., external SAML IDP)
+  const loginWithIdp = useCallback((idpAlias: string) => {
+    if (keycloak) {
+      keycloak.login({
+        redirectUri: window.location.href,
+        idpHint: idpAlias,
+      });
+    }
+  }, [keycloak]);
+
   // Logout function
   const logout = useCallback(() => {
     if (keycloak) {
@@ -200,6 +211,7 @@ export function AuthProvider({ children, tenantSlug }: AuthProviderProps) {
     isLoading,
     error,
     login,
+    loginWithIdp,
     logout,
     hasRole,
     getToken,

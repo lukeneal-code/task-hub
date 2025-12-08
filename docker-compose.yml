@@ -57,6 +57,33 @@ services:
     networks:
       - taskhub-network
 
+  # External Keycloak - Simulates enterprise IDP (Okta, Azure AD, etc.)
+  keycloak-external:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: taskhub-keycloak-external
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8082
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_HEALTH_ENABLED: true
+    command: start-dev --import-realm
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./keycloak/external-realm-config:/opt/keycloak/data/import
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e \"GET /health/ready HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n\" >&3;grep -q '200 OK' <&3"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - taskhub-network
+
   # Backend API Service
   backend:
     build:

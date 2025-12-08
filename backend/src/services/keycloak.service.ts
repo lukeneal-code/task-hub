@@ -319,22 +319,35 @@ class KeycloakService {
 
   /**
    * Configures an identity provider (IdP) for social login or enterprise SSO.
+   * Supports OIDC (Google, GitHub, generic OIDC) and SAML providers.
    */
   async configureIdentityProvider(
     realmName: string,
-    providerType: 'google' | 'github' | 'oidc',
+    providerType: 'google' | 'github' | 'oidc' | 'saml',
     config: {
       alias: string;
-      clientId: string;
-      clientSecret: string;
+      displayName?: string;
+      clientId?: string;
+      clientSecret?: string;
       issuer?: string;
+      // SAML-specific config
+      entityId?: string;
+      singleSignOnServiceUrl?: string;
+      singleLogoutServiceUrl?: string;
+      signingCertificate?: string;
+      nameIDPolicyFormat?: string;
+      principalType?: 'SUBJECT' | 'ATTRIBUTE' | 'FRIENDLY_ATTRIBUTE';
+      principalAttribute?: string;
+      wantAssertionsSigned?: boolean;
+      validateSignature?: boolean;
     }
   ): Promise<void> {
-    logger.info('Configuring identity provider', { realmName, providerType });
+    logger.info('Configuring identity provider', { realmName, providerType, alias: config.alias });
 
     const providerConfigs: Record<string, any> = {
       google: {
         alias: config.alias || 'google',
+        displayName: config.displayName || 'Google',
         providerId: 'google',
         enabled: true,
         trustEmail: true,
@@ -349,6 +362,7 @@ class KeycloakService {
       },
       github: {
         alias: config.alias || 'github',
+        displayName: config.displayName || 'GitHub',
         providerId: 'github',
         enabled: true,
         trustEmail: true,
@@ -360,9 +374,11 @@ class KeycloakService {
       },
       oidc: {
         alias: config.alias,
+        displayName: config.displayName || config.alias,
         providerId: 'oidc',
         enabled: true,
         trustEmail: true,
+        firstBrokerLoginFlowAlias: 'first broker login',
         config: {
           clientId: config.clientId,
           clientSecret: config.clientSecret,
@@ -372,6 +388,35 @@ class KeycloakService {
           issuer: config.issuer,
         },
       },
+      saml: {
+        alias: config.alias,
+        displayName: config.displayName || config.alias,
+        providerId: 'saml',
+        enabled: true,
+        trustEmail: true,
+        storeToken: false,
+        linkOnly: false,
+        firstBrokerLoginFlowAlias: 'first broker login',
+        config: {
+          entityId: config.entityId,
+          singleSignOnServiceUrl: config.singleSignOnServiceUrl,
+          singleLogoutServiceUrl: config.singleLogoutServiceUrl || config.singleSignOnServiceUrl,
+          nameIDPolicyFormat: config.nameIDPolicyFormat || 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+          principalType: config.principalType || 'ATTRIBUTE',
+          principalAttribute: config.principalAttribute || 'email',
+          signatureAlgorithm: 'RSA_SHA256',
+          wantAuthnRequestsSigned: 'false',
+          wantAssertionsSigned: config.wantAssertionsSigned !== false ? 'true' : 'false',
+          wantAssertionsEncrypted: 'false',
+          forceAuthn: 'false',
+          validateSignature: config.validateSignature !== false ? 'true' : 'false',
+          signingCertificate: config.signingCertificate || '',
+          postBindingResponse: 'true',
+          postBindingAuthnRequest: 'true',
+          postBindingLogout: 'true',
+          syncMode: 'INHERIT',
+        },
+      },
     };
 
     await this.adminRequest(
@@ -379,6 +424,51 @@ class KeycloakService {
       `/${realmName}/identity-provider/instances`,
       providerConfigs[providerType]
     );
+
+    logger.info('Identity provider configured', { realmName, alias: config.alias, type: providerType });
+  }
+
+  /**
+   * Gets all configured identity providers for a realm.
+   */
+  async getIdentityProviders(realmName: string): Promise<any[]> {
+    return this.adminRequest<any[]>('get', `/${realmName}/identity-provider/instances`);
+  }
+
+  /**
+   * Gets a specific identity provider by alias.
+   */
+  async getIdentityProvider(realmName: string, alias: string): Promise<any> {
+    return this.adminRequest<any>('get', `/${realmName}/identity-provider/instances/${alias}`);
+  }
+
+  /**
+   * Deletes an identity provider from a realm.
+   */
+  async deleteIdentityProvider(realmName: string, alias: string): Promise<void> {
+    logger.info('Deleting identity provider', { realmName, alias });
+    await this.adminRequest('delete', `/${realmName}/identity-provider/instances/${alias}`);
+  }
+
+  /**
+   * Creates IDP attribute mappers for SAML/OIDC assertions.
+   */
+  async createIdentityProviderMappers(
+    realmName: string,
+    alias: string,
+    mappers: Array<{
+      name: string;
+      identityProviderMapper: string;
+      config: Record<string, string>;
+    }>
+  ): Promise<void> {
+    for (const mapper of mappers) {
+      await this.adminRequest('post', `/${realmName}/identity-provider/instances/${alias}/mappers`, {
+        ...mapper,
+        identityProviderAlias: alias,
+      });
+    }
+    logger.info('Identity provider mappers created', { realmName, alias, count: mappers.length });
   }
 
   /**

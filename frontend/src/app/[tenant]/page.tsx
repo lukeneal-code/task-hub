@@ -6,11 +6,32 @@ import Layout from '@/components/Layout';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
 /**
+ * Icon for external IDP buttons
+ */
+function ExternalIdpIcon() {
+  return (
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+      />
+    </svg>
+  );
+}
+
+/**
  * Tenant home page.
- * Shows login prompt or redirects to projects.
+ * Shows login prompt with standard and IDP login options, or redirects to projects.
  */
 export default function TenantHomePage() {
-  const { isAuthenticated, isLoading, error, login, tenant } = useAuth();
+  const { isAuthenticated, isLoading, error, login, loginWithIdp, tenant } = useAuth();
 
   if (isLoading) {
     return (
@@ -40,6 +61,8 @@ export default function TenantHomePage() {
   }
 
   if (!isAuthenticated) {
+    const hasExternalIdps = tenant?.identityProviders && tenant.identityProviders.length > 0;
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center px-4">
         <div className="max-w-md w-full">
@@ -58,9 +81,39 @@ export default function TenantHomePage() {
               and tasks.
             </p>
 
+            {/* Standard Sign In Button */}
             <button onClick={login} className="w-full btn btn-primary py-3">
               Sign In
             </button>
+
+            {/* External IDP Buttons */}
+            {hasExternalIdps && (
+              <>
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-300"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-white text-gray-500">
+                      Or continue with
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {tenant.identityProviders!.map((idp) => (
+                    <button
+                      key={idp.alias}
+                      onClick={() => loginWithIdp(idp.alias)}
+                      className="w-full btn btn-secondary py-3 flex items-center justify-center gap-2"
+                    >
+                      <ExternalIdpIcon />
+                      <span>{idp.displayName}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <div className="mt-6 text-sm text-gray-500">
               <p>
