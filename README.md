@@ -11,6 +11,7 @@ TaskHub demonstrates key multi-tenant SaaS architecture concepts:
 - **SOC2 Compliance**: Comprehensive audit logging for all security-relevant events
 - **GDPR Data Isolation**: Schema-per-tenant database architecture ensures complete data separation
 - **Single Sign-On (SSO)**: Keycloak-powered authentication with social login support
+- **Federated Identity**: SAML 2.0 federation with external Identity Providers
 - **Admin Service**: Python/FastAPI service for tenant provisioning with React admin UI
 
 ## Architecture
@@ -106,6 +107,7 @@ TaskHub demonstrates key multi-tenant SaaS architecture concepts:
    | Admin UI | http://localhost:5173 | Tenant management dashboard |
    | Admin API | http://localhost:8000 | Tenant provisioning API |
    | Keycloak | http://localhost:8080 | Identity provider (admin/admin) |
+   | External Keycloak | http://localhost:8082 | External SAML IDP for federation testing |
 
 ### Demo Credentials
 
@@ -113,9 +115,16 @@ For the `demo` tenant (http://localhost:3000/demo):
 
 | Role    | Email             | Password     |
 |---------|-------------------|--------------|
-| Admin   | admin@demo.com    | password123  |
-| Manager | manager@demo.com  | password123  |
-| Member  | member@demo.com   | password123  |
+| Admin   | admin@demo.com    | Admin123!    |
+| Manager | manager@demo.com  | Manager123!  |
+| Member  | member@demo.com   | Member123!   |
+
+**External IDP Users** (for federated login testing):
+
+| Role       | Email                          | Password       |
+|------------|--------------------------------|----------------|
+| Employee   | external.user@enterprise.com   | External123!   |
+| Contractor | external.contractor@partner.com| Contractor123! |
 
 ## Project Structure
 
@@ -152,7 +161,8 @@ task-hub/
 │           ├── pages/         # TenantList, TenantCreate, etc.
 │           └── services/      # API client
 ├── keycloak/                   # Keycloak configuration
-│   ├── realm-config/          # Realm JSON exports
+│   ├── realm-config/          # Main realm JSON exports
+│   ├── external-realm-config/ # External IDP realm configuration
 │   └── themes/                # Custom login themes
 ├── scripts/                    # Database scripts
 ├── docs/                       # Documentation
@@ -255,7 +265,36 @@ await jose.jwtVerify(token, jwks, {
 });
 ```
 
-### 6. SOC2 Compliant Audit Logging
+### 6. Federated Identity (SAML 2.0)
+
+TaskHub supports federation with external Identity Providers via SAML 2.0. This enables enterprise SSO scenarios where users authenticate with their corporate IDP (e.g., Okta, Azure AD, ADFS).
+
+**Architecture:**
+```
+User → TaskHub Frontend → Main Keycloak (SP) ←SAML→ External IDP
+```
+
+**Testing Federated Login:**
+1. Navigate to http://localhost:3000/demo
+2. Click "External Enterprise SSO" button
+3. Login with external user credentials at http://localhost:8082
+4. User is redirected back to TaskHub, authenticated
+
+**Configuring SAML IDPs:**
+```typescript
+// Backend: Configure SAML identity provider for a tenant
+await keycloakService.configureIdentityProvider(realmName, 'saml', {
+  alias: 'corporate-idp',
+  displayName: 'Corporate SSO',
+  entityId: 'http://localhost:8080/realms/demo',
+  singleSignOnServiceUrl: 'https://idp.example.com/saml/sso',
+  signingCertificate: '...',
+});
+```
+
+The login page dynamically displays available identity providers based on tenant configuration.
+
+### 7. SOC2 Compliant Audit Logging
 
 All security-relevant events are logged:
 
